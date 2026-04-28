@@ -1,0 +1,125 @@
+// Self Balancing Robot using ESP32 + MPU6050
+// Motor Driver: BTS7960 / L298N
+// Author: Vijay Raj
+
+#include <Wire.h>
+#include <MPU6050.h>
+
+MPU6050 mpu;
+
+// ---------- Motor Pins ----------
+#define ENA 25
+#define IN1 26
+#define IN2 27
+
+#define ENB 14
+#define IN3 12
+#define IN4 13
+
+// ---------- PID Variables ----------
+float Kp = 25.0;
+float Ki = 0.8;
+float Kd = 1.2;
+
+float error = 0;
+float previousError = 0;
+float integral = 0;
+float derivative = 0;
+float output = 0;
+
+float setPoint = 0;   // Perfect balance angle
+
+// ---------- MPU Variables ----------
+int16_t ax, ay, az;
+int16_t gx, gy, gz;
+
+float angle = 0;
+
+// ---------- Time ----------
+unsigned long previousTime = 0;
+float elapsedTime;
+
+// ---------- Setup ----------
+void setup() {
+  Serial.begin(115200);
+  Wire.begin();
+
+  mpu.initialize();
+
+  pinMode(ENA, OUTPUT);
+  pinMode(IN1, OUTPUT);
+  pinMode(IN2, OUTPUT);
+
+  pinMode(ENB, OUTPUT);
+  pinMode(IN3, OUTPUT);
+  pinMode(IN4, OUTPUT);
+
+  if (mpu.testConnection()) {
+    Serial.println("MPU6050 Connected");
+  } else {
+    Serial.println("MPU6050 Failed");
+  }
+
+  delay(1000);
+}
+
+// ---------- Main Loop ----------
+void loop() {
+
+  // Read sensor
+  mpu.getMotion6(&ax, &ay, &az, &gx, &gy, &gz);
+
+  // Calculate angle
+  angle = atan2(ay, az) * 180 / PI;
+
+  // Time
+  unsigned long currentTime = millis();
+  elapsedTime = (currentTime - previousTime) / 1000.0;
+  previousTime = currentTime;
+
+  // PID
+  error = angle - setPoint;
+  integral += error * elapsedTime;
+  derivative = (error - previousError) / elapsedTime;
+
+  output = (Kp * error) + (Ki * integral) + (Kd * derivative);
+
+  previousError = error;
+
+  // Motor Control
+  balanceRobot(output);
+
+  // Debug
+  Serial.print("Angle: ");
+  Serial.print(angle);
+  Serial.print(" Output: ");
+  Serial.println(output);
+
+  delay(10);
+}
+
+// ---------- Balance Function ----------
+void balanceRobot(float speedVal) {
+
+  int pwm = constrain(abs(speedVal), 0, 255);
+
+  if (speedVal > 0) {
+    // Forward
+    digitalWrite(IN1, HIGH);
+    digitalWrite(IN2, LOW);
+
+    digitalWrite(IN3, HIGH);
+    digitalWrite(IN4, LOW);
+  }
+  else {
+    // Backward
+    digitalWrite(IN1, LOW);
+    digitalWrite(IN2, HIGH);
+
+    digitalWrite(IN3, LOW);
+    digitalWrite(IN4, HIGH);
+  }
+
+  analogWrite(ENA, pwm);
+  analogWrite(ENB, pwm);
+}
